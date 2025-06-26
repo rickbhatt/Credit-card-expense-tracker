@@ -56,8 +56,6 @@ class Database:
     def __enter__(self):
         """Called automatically when entering 'with' block"""
 
-        print("Connecting to the database...")
-
         if self.connect():
             return self
         else:

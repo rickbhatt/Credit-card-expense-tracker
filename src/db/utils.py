@@ -31,6 +31,8 @@ def display_transactions_and_total(df, total):
             # Format amount with currency symbol
             amount_str = f"₹{row['amount']:,.2f}"
 
+            date_str = f"{row['date'].strftime('%d-%b-%Y')}"
+
             # Handle empty remarks
             remarks = (
                 row["remarks"] if pd.notna(row["remarks"]) and row["remarks"] else "-"
@@ -38,7 +40,7 @@ def display_transactions_and_total(df, total):
 
             table.add_row(
                 str(row["id"]),
-                str(row["date"]),
+                date_str,
                 str(row["transaction_details"]),
                 amount_str,
                 remarks,
