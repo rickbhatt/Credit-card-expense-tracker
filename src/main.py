@@ -5,7 +5,7 @@ from decimal import Decimal, InvalidOperation
 
 
 def display_options():
-    print("*" * 50, end="\n")
+    print("*" * 50)
 
     print("1. Press 1 to insert transaction details")
     print("2. Press 2 to see all transactions and total expenditure")
@@ -13,7 +13,7 @@ def display_options():
 
     option_input = input("Enter your option: ")
 
-    print("*" * 50, end="\n")
+    print("*" * 50)
 
     return option_input
 

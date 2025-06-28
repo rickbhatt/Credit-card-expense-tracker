@@ -20,15 +20,17 @@ def display_transactions_and_total(df, total):
         )
 
         # Add columns
-        table.add_column("ID", style="dim", width=6)
+        table.add_column("Sl No.", style="dim", width=6)
+        # table.add_column("ID", style="dim", width=6)
         table.add_column("Date", style="cyan", width=12)
         table.add_column("Transaction Details", style="white", width=40)
         table.add_column("Amount", style="green", justify="right", width=12)
         table.add_column("Remarks", style="yellow", width=20)
 
         # Add rows from DataFrame
-        for _, row in df.iterrows():
+        for index, row in df.iterrows():
             # Format amount with currency symbol
+
             amount_str = f"₹{row['amount']:,.2f}"
 
             date_str = f"{row['date'].strftime('%d-%b-%Y')}"
@@ -39,7 +41,8 @@ def display_transactions_and_total(df, total):
             )
 
             table.add_row(
-                str(row["id"]),
+                # str(row["id"]),
+                str(index + 1),
                 date_str,
                 str(row["transaction_details"]),
                 amount_str,
