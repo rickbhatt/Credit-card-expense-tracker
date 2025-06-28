@@ -44,7 +44,7 @@ class Database:
     def disconnect(self):
         if self.connection and not self.connection.closed:
             self.connection.close()
-            print("Database connection closed.")
+            print("\nDatabase connection closed.")
 
         self.connection = None
 
