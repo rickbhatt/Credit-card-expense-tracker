@@ -2,7 +2,6 @@ from rich.console import Console
 from rich.table import Table
 from rich.text import Text
 import pandas as pd
-from datetime import datetime
 
 
 def display_transactions_in_table(df, total=0.00, table_title=None):
