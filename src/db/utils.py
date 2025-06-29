@@ -2,9 +2,10 @@ from rich.console import Console
 from rich.table import Table
 from rich.text import Text
 import pandas as pd
+from datetime import datetime
 
 
-def display_transactions_and_total(df, total):
+def display_transactions_in_table(df, total=0.00, table_title=None):
     """
     Displays the transactions in a tabular form and also the total
     """
@@ -14,17 +15,23 @@ def display_transactions_and_total(df, total):
         console = Console()
 
         table = Table(
-            title="💳 Credit Card Transactions",
+            title=table_title,
             show_header=True,
             header_style="bold magenta",
+            show_lines=True,
         )
 
         # Add columns
         table.add_column("Sl No.", style="dim", width=6)
-        # table.add_column("ID", style="dim", width=6)
+        table.add_column("ID", style="dim", width=6)
         table.add_column("Date", style="cyan", width=12)
         table.add_column("Transaction Details", style="white", width=40)
-        table.add_column("Amount", style="green", justify="right", width=12)
+        table.add_column(
+            "Amount",
+            style="green",
+            justify="right",
+            width=12,
+        )
         table.add_column("Remarks", style="yellow", width=20)
 
         # Add rows from DataFrame
@@ -41,8 +48,8 @@ def display_transactions_and_total(df, total):
             )
 
             table.add_row(
-                # str(row["id"]),
                 str(index + 1),
+                str(row["id"]),
                 date_str,
                 str(row["transaction_details"]),
                 amount_str,
@@ -53,10 +60,13 @@ def display_transactions_and_total(df, total):
         console.print(table)
 
         # Display total with styling
-        console.print()
-        total_text = Text(f"💰 Total Amount: ₹{total:,.2f}", style="bold green")
-        console.print(total_text)
-        console.print()
+        if total > 0.00:
+            console.print()
+            total_text = Text(
+                f"💰 Total Expenditure: ₹{total:,.2f}", style="bold green"
+            )
+            console.print(total_text)
+            console.print()
 
     except Exception as e:
         raise Exception(f"An error occurred in display_transactions_and_total: {e}")

@@ -4,7 +4,7 @@ from dotenv import load_dotenv
 from datetime import datetime
 from decimal import Decimal
 import pandas as pd
-from .utils import display_transactions_and_total
+from .utils import display_transactions_in_table
 
 
 load_dotenv()
@@ -168,7 +168,75 @@ class Database:
             if total is None:
                 total = Decimal("0.00")
 
-            display_transactions_and_total(df, total)
+            display_transactions_in_table(
+                df=df,
+                total=total,
+                table_title="💳 Credit Card Transactions",
+            )
 
         except Exception as e:
             print("Something went wrong, cannot display transaction and total: ", e)
+
+    def _get_transaction_by_id(self, transaction_id):
+        """
+        Gets a transaction by id
+        Args:
+        transaction_id (int): The ID of the transaction
+        Returns:
+            dict: Transaction data or None if not found
+        """
+
+        try:
+            query = """
+                SELECT id, date, transaction_details, amount, remarks 
+                FROM transaction 
+                WHERE id = %s
+            """
+
+            df = pd.read_sql_query(query, self.connection, params=(transaction_id,))
+
+            return df
+
+        except (Exception, psycopg2.Error) as error:
+            print(f"❌ Error fetching transaction: {error}")
+
+            return pd.DataFrame()
+
+    def delete_transaction_by_id(self, transaction_id):
+        try:
+            df = self._get_transaction_by_id(transaction_id)
+
+            if df is None or df.empty:
+                print("❌ Transaction not found.")
+                return False
+
+            display_transactions_in_table(
+                df=df,
+                table_title="🚮  Transaction to be deleted",
+            )
+
+            confirm = input(
+                "⚠️  Are you sure you want to delete this transaction? (y/N): "
+            ).lower()
+
+            if confirm not in ["y", "yes"]:
+                print("❌ Deletion cancelled.")
+                return False
+
+            with self.connection.cursor() as cursor:
+                delete_query = "DELETE FROM transaction WHERE id = %s"
+                cursor.execute(delete_query, (transaction_id,))
+                self.connection.commit()
+
+                if cursor.rowcount > 0:
+                    print(
+                        f"✅ Transaction with ID {transaction_id} deleted successfully."
+                    )
+                    return True
+                else:
+                    print(f"❌ Failed to delete transaction with ID {transaction_id}.")
+                    return False
+
+        except (Exception, psycopg2.Error) as error:
+            print(f"❌ Error deleting transaction: {error}")
+            return False
