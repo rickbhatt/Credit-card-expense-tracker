@@ -81,7 +81,7 @@ if __name__ == "__main__":
                         continue
 
                     case "3":
-                        db.delete_transaction_by_id()
+                        db.delete_transaction_menu()
                         continue
 
                     case "4":

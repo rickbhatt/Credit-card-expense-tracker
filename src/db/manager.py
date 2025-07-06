@@ -3,11 +3,15 @@ from dotenv import load_dotenv
 from datetime import datetime
 from decimal import Decimal
 import pandas as pd
-from .utils import display_transactions_in_table
 from sqlalchemy import create_engine, func
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.exc import SQLAlchemyError
 from .models import Transaction, Base
+from .utils import (
+    display_transactions_in_table,
+    display_transactions_for_selection,
+    display_single_transaction,
+)
 
 
 load_dotenv()
@@ -200,34 +204,59 @@ class Database:
 
             return None, None
 
-    def delete_transaction_by_id(self):
+    def delete_transaction_menu(self):
+        """
+        Menu interface for deleting transactions
+        """
         try:
-            all_trasanctions = self._get_all_transactions()
+            # Show all transactions
+            all_transactions = self._get_all_transactions()
 
-            ID_Map = display_transactions_in_table(
-                df=all_trasanctions, table_title="📑  Transactions"
+            if all_transactions is None or all_transactions.empty:
+                print("❌ No transactions found.")
+                return False
+
+            ID_map = display_transactions_for_selection(
+                df=all_transactions, table_title="📑 Select Transaction to Delete"
             )
 
-            serial_no = int(
-                input("Enter serial number of the record you want to delete: ")
-            )
+            # Get user selection
+            try:
+                serial_no = int(
+                    input("Enter serial number of the record you want to delete: ")
+                )
+            except ValueError:
+                print("❌ Invalid input. Please enter a number.")
+                return False
 
-            if serial_no not in ID_Map:
+            if serial_no not in ID_map:
                 print("❌ Invalid transaction selection.")
                 return False
 
-            transaction_id = ID_Map[serial_no]
+            transaction_id = ID_map[serial_no]
 
+            # Call the actual delete method
+            return self._delete_transaction_by_id(transaction_id)
+
+        except Exception as error:
+            print(f"❌ Error in delete menu: {error}")
+            return False
+
+    def _delete_transaction_by_id(self, transaction_id):
+        """
+        Deletes a transaction by ID (pure business logic)
+        """
+        try:
             transaction, df = self._get_transaction_by_id(transaction_id)
 
             if not transaction:
                 print("❌ Transaction not found.")
-                print(f"❌ Failed to delete transaction with ID {transaction_id}.")
                 return False
 
-            display_transactions_in_table(
+            # Show transaction to be deleted
+            display_single_transaction(
                 df=df,
-                table_title="🚮  Transaction to be deleted",
+                table_title="🚮 Transaction to be deleted",
             )
 
             confirm = input(
@@ -241,9 +270,13 @@ class Database:
             self.session.delete(transaction)
             self.session.commit()
 
-            print(f"✅ Transaction with ID {transaction_id} deleted successfully.")
+            print("✅ Transaction deleted successfully.")
             return True
 
-        except (SQLAlchemyError, Exception) as error:
+        except SQLAlchemyError as error:
+            print(f"❌ Database error deleting transaction: {error}")
+            self.session.rollback()
+            return False
+        except Exception as error:
             print(f"❌ Error deleting transaction: {error}")
             return False
