@@ -1,5 +1,4 @@
 from db.manager import Database
-import warnings
 from datetime import datetime
 from decimal import Decimal, InvalidOperation
 
@@ -58,7 +57,6 @@ def insert(db):
 
 
 if __name__ == "__main__":
-    warnings.filterwarnings("ignore", message="pandas only supports SQLAlchemy")
     try:
         with Database() as db:
             while True:

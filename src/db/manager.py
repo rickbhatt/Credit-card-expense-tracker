@@ -1,10 +1,13 @@
-import psycopg2
 import os
 from dotenv import load_dotenv
 from datetime import datetime
 from decimal import Decimal
 import pandas as pd
 from .utils import display_transactions_in_table
+from sqlalchemy import create_engine, func
+from sqlalchemy.orm import sessionmaker
+from sqlalchemy.exc import SQLAlchemyError
+from .models import Transaction, Base
 
 
 load_dotenv()
@@ -17,7 +20,10 @@ class Database:
         self.host = os.getenv("DB_HOST")
         self.port = os.getenv("DB_PORT")
         self.password = os.getenv("DB_PASSWORD")
-        self.connection = None
+        self.is_create_table = os.getenv("CREATE_TABLES", "false").lower() == "true"
+        self.engine = None
+        self.Session = None
+        self.session = None
 
     def connect(self):
         """
@@ -25,28 +31,35 @@ class Database:
         """
 
         try:
-            self.connection = psycopg2.connect(
-                database=self.db_name,
-                user=self.user,
-                password=self.password,
-                host=self.host,
-                port=self.port,
-            )
+            db_url = f"postgresql://{self.user}:{self.password}@{self.host}:{self.port}/{self.db_name}"
+
+            self.engine = create_engine(db_url, echo=False)
+
+            if self.is_create_table:
+                Base.metadata.create_all(self.engine)
+
+            self.Session = sessionmaker(bind=self.engine)
+            self.session = self.Session()
+
             print("Connection to the database successful!")
 
             return True
 
-        except (Exception, psycopg2.Error) as e:
+        except (SQLAlchemyError, Exception) as e:
             print("Unable to connect to the database:")
             print(e)
             return False
 
     def disconnect(self):
-        if self.connection and not self.connection.closed:
-            self.connection.close()
-            print("\nDatabase connection closed.")
+        if self.engine:
+            self.session.close()
+            self.session = None
 
-        self.connection = None
+        if self.engine:
+            self.engine.dispose()
+            self.engine = None
+
+        print("\nDatabase connection closed.")
 
     """
     Adding the enter and the exit methods makes the class a context manager.
@@ -66,23 +79,6 @@ class Database:
         self.disconnect()
         return False
 
-    def create_table(self, create_table_sql):
-        """
-        Creates a new table in the database.
-        """
-
-        try:
-            with self.connection.cursor() as cursor:
-                cursor.execute(create_table_sql)
-                self.connection.commit()
-                print("Table created successfully.")
-                return True
-
-        except (Exception, psycopg2.Error) as error:
-            print("Unable to create table:")
-            print(error)
-            return None
-
     def insert_into_transaction_table(
         self, transaction_date_str, transaction_details, amount_str, remarks
     ):
@@ -94,19 +90,19 @@ class Database:
 
             amount = Decimal(amount_str)
 
-            with self.connection.cursor() as cursor:
-                insert_sql = """
-                    INSERT INTO transaction (date, transaction_details, amount, remarks)
-                    VALUES (%s, %s, %s, %s)
-                    RETURNING id;
-                """
-                cursor.execute(insert_sql, (date, transaction_details, amount, remarks))
-                self.connection.commit()
-                inserted_id = cursor.fetchone()[0]
+            new_transaction = Transaction(
+                date=date,
+                transaction_details=transaction_details,
+                amount=amount,
+                remarks=remarks,
+            )
 
-                return inserted_id
+            self.session.add(new_transaction)
+            self.session.commit()
 
-        except (Exception, psycopg2.Error) as error:
+            return new_transaction.id
+
+        except (SQLAlchemyError, Exception) as error:
             print("Unable to insert data into the table:")
             print(error)
             return None
@@ -124,10 +120,10 @@ class Database:
                 ORDER BY date DESC, id DESC
             """
 
-            df = pd.read_sql_query(query, self.connection)
+            df = pd.read_sql_query(query, self.engine)
             return df
 
-        except (Exception, psycopg2.Error) as error:
+        except (SQLAlchemyError, Exception) as error:
             print(f"Unable to retrieve data from the transaction table: {error}")
 
             return None
@@ -139,16 +135,10 @@ class Database:
         """
 
         try:
-            query = "SELECT SUM(amount) as total FROM transaction"
+            total = self.session.query(func.sum(Transaction.amount)).scalar()
+            return total if total is not None else Decimal("0.00")
 
-            with self.connection.cursor() as cursor:
-                cursor.execute(query)
-                result = cursor.fetchone()[0]
-
-            total = result if result is not None else Decimal("0.00")
-            return total
-
-        except (Exception, psycopg2.Error) as error:
+        except (SQLAlchemyError, Exception) as error:
             print(f"Failed to calculate total: {error}")
             return None
 
@@ -187,27 +177,36 @@ class Database:
         """
 
         try:
-            query = """
-                SELECT id, date, transaction_details, amount, remarks 
-                FROM transaction 
-                WHERE id = %s
-            """
+            transaction = self.session.get(Transaction, transaction_id)
 
-            df = pd.read_sql_query(query, self.connection, params=(transaction_id,))
+            if not transaction:
+                return None, None
+            df = pd.DataFrame(
+                [
+                    {
+                        "id": transaction.id,
+                        "date": transaction.date,
+                        "transaction_details": transaction.transaction_details,
+                        "amount": transaction.amount,
+                        "remarks": transaction.remarks,
+                    }
+                ]
+            )
 
-            return df
+            return transaction, df
 
-        except (Exception, psycopg2.Error) as error:
+        except (SQLAlchemyError, Exception) as error:
             print(f"❌ Error fetching transaction: {error}")
 
-            return pd.DataFrame()
+            return None, None
 
     def delete_transaction_by_id(self, transaction_id):
         try:
-            df = self._get_transaction_by_id(transaction_id)
+            transaction, df = self._get_transaction_by_id(transaction_id)
 
-            if df is None or df.empty:
+            if not transaction:
                 print("❌ Transaction not found.")
+                print(f"❌ Failed to delete transaction with ID {transaction_id}.")
                 return False
 
             display_transactions_in_table(
@@ -223,20 +222,12 @@ class Database:
                 print("❌ Deletion cancelled.")
                 return False
 
-            with self.connection.cursor() as cursor:
-                delete_query = "DELETE FROM transaction WHERE id = %s"
-                cursor.execute(delete_query, (transaction_id,))
-                self.connection.commit()
+            self.session.delete(transaction)
+            self.session.commit()
 
-                if cursor.rowcount > 0:
-                    print(
-                        f"✅ Transaction with ID {transaction_id} deleted successfully."
-                    )
-                    return True
-                else:
-                    print(f"❌ Failed to delete transaction with ID {transaction_id}.")
-                    return False
+            print(f"✅ Transaction with ID {transaction_id} deleted successfully.")
+            return True
 
-        except (Exception, psycopg2.Error) as error:
+        except (SQLAlchemyError, Exception) as error:
             print(f"❌ Error deleting transaction: {error}")
             return False
