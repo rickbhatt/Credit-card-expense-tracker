@@ -81,9 +81,7 @@ if __name__ == "__main__":
                         continue
 
                     case "3":
-                        transaction_id = int(input("Enter transaction ID to delete: "))
-
-                        db.delete_transaction_by_id(transaction_id)
+                        db.delete_transaction_by_id()
                         continue
 
                     case "4":

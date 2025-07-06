@@ -200,8 +200,24 @@ class Database:
 
             return None, None
 
-    def delete_transaction_by_id(self, transaction_id):
+    def delete_transaction_by_id(self):
         try:
+            all_trasanctions = self._get_all_transactions()
+
+            ID_Map = display_transactions_in_table(
+                df=all_trasanctions, table_title="📑  Transactions"
+            )
+
+            serial_no = int(
+                input("Enter serial number of the record you want to delete: ")
+            )
+
+            if serial_no not in ID_Map:
+                print("❌ Invalid transaction selection.")
+                return False
+
+            transaction_id = ID_Map[serial_no]
+
             transaction, df = self._get_transaction_by_id(transaction_id)
 
             if not transaction:

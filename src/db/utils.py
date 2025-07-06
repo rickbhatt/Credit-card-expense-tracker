@@ -22,7 +22,6 @@ def display_transactions_in_table(df, total=0.00, table_title=None):
 
         # Add columns
         table.add_column("Sl No.", style="dim", width=6)
-        table.add_column("ID", style="dim", width=6)
         table.add_column("Date", style="cyan", width=12)
         table.add_column("Transaction Details", style="white", width=40)
         table.add_column(
@@ -32,6 +31,12 @@ def display_transactions_in_table(df, total=0.00, table_title=None):
             width=12,
         )
         table.add_column("Remarks", style="yellow", width=20)
+
+        """
+        mapped the ids to sl_no so that user does not need ids to do operations
+        instead just mention the sl_no
+        """
+        ID_Map = dict(enumerate(df["id"], start=1))
 
         # Add rows from DataFrame
         for index, row in df.iterrows():
@@ -48,7 +53,6 @@ def display_transactions_in_table(df, total=0.00, table_title=None):
 
             table.add_row(
                 str(index + 1),
-                str(row["id"]),
                 date_str,
                 str(row["transaction_details"]),
                 amount_str,
@@ -66,6 +70,8 @@ def display_transactions_in_table(df, total=0.00, table_title=None):
             )
             console.print(total_text)
             console.print()
+
+        return ID_Map
 
     except Exception as e:
         raise Exception(f"An error occurred in display_transactions_and_total: {e}")
