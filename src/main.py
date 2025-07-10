@@ -9,7 +9,7 @@ def display_options():
     print("1. Press 1 to insert transaction details")
     print("2. Press 2 to see all transactions and total expenditure")
     print("3. Press 3 to delete a transaction")
-    print("4. Press 4 to exit the program")
+    print("🚪 Press Ctrl+C to exit the program")
 
     option_input = input("Enter your option: ")
 
@@ -83,11 +83,6 @@ if __name__ == "__main__":
                     case "3":
                         db.delete_transaction_menu()
                         continue
-
-                    case "4":
-                        print("Exiting program...")
-
-                        break
 
                     case _:
                         print("Invalid option. Please try again.")
