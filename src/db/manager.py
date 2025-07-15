@@ -323,3 +323,117 @@ class Database:
         except Exception as error:
             print(f"❌ Error deleting transaction: {error}")
             return False
+
+    def _update_transaction_by_id(self, id):
+        """
+        Updates a transaction by ID (pure business logic)
+        """
+
+        try:
+            transaction, df = self._get_transaction_by_id(id)
+
+            if not transaction:
+                print("❌ Transaction not found.")
+                return False
+
+            # Show transaction to be updated
+            display_single_transaction(
+                df=df,
+                table_title="💳 Transaction to be updated",
+            )
+
+            print("Enter the details below to update the transaction")
+            while True:
+                transaction_date_str = input("Enter transaction date DD-MM-YYYY: ")
+                try:
+                    datetime.strptime(transaction_date_str, "%d-%m-%Y")
+                    break  # Valid date, exit loop
+                except ValueError:
+                    print(
+                        "❌ Invalid date format. Please use DD-MM-YYYY format (e.g., 25-12-2024)"
+                    )
+
+            transaction_details = input("Enter transaction details: ")
+
+            # Amount validation with retry
+            while True:
+                amount_str = input("Enter amount: ")
+                try:
+                    amount = Decimal(amount_str)
+                    if amount <= 0:
+                        print(
+                            "❌ Amount cannot be negative. Please enter a positive value."
+                        )
+                        continue
+                    break  # Valid amount, exit loop
+                except (ValueError, InvalidOperation):
+                    print("❌ Invalid amount format. Please enter a valid number.")
+
+            remarks = input("Enter remarks (Optional): ")
+
+            confirm = input(
+                "⚠️  Are you sure you want to update this transaction? (y/N): "
+            ).lower()
+
+            if confirm not in ["y", "yes"]:
+                print("❌ Update cancelled.")
+                return False
+
+            transaction.date = transaction_date_str
+            transaction.transaction_details = transaction_details
+            transaction.amount = amount
+            transaction.remarks = remarks
+            self.session.commit()
+
+            return True
+
+        except SQLAlchemyError as error:
+            print(f"❌ Database error updating transaction: {error}")
+            self.session.rollback()
+            return False
+        except Exception as error:
+            print(f"❌ Error updating transaction: {error}")
+            return False
+
+    def update_transaction_menu(self):
+        """
+        Menu interface for updating transactions
+        """
+
+        try:
+            all_transactions = self._get_all_transactions()
+
+            if all_transactions is None or all_transactions.empty:
+                print("❌ No transactions found.")
+                return False
+
+            ID_map = display_transactions_for_selection(
+                df=all_transactions, table_title="📑 Select Transaction to Update"
+            )
+
+            # Getting user selection
+            try:
+                serial_no = int(
+                    input("Enter serial number of the record you want to update: ")
+                )
+            except ValueError:
+                print("❌ Invalid input. Please enter a number.")
+                return False
+
+            if serial_no not in ID_map:
+                print("❌ Invalid transaction selection.")
+                return False
+
+            transaction_id = ID_map[serial_no]
+
+            # Call the actual update method
+            result = self._update_transaction_by_id(transaction_id)
+
+            if result:
+                print("✅ Transaction updated successfully.")
+            else:
+                print("❌ Transaction update failed.")
+
+        except Exception as error:
+            print(f"❌ Error in delete menu: {error}")
+            return False
