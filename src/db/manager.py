@@ -12,7 +12,7 @@ from .utils import (
     display_transactions_for_selection,
     display_single_transaction,
 )
-from app_logging.config import setup_logger
+from app_logging.config import setup_logger, get_ui
 
 
 load_dotenv()
@@ -21,6 +21,7 @@ load_dotenv()
 class Database:
     def __init__(self):
         self.logger = setup_logger("database")
+        self.ui = get_ui()
         self.db_name = os.getenv("DB_NAME")
         self.user = os.getenv("DB_USER")
         self.host = os.getenv("DB_HOST")
@@ -37,6 +38,7 @@ class Database:
         Connects to the database
         """
         self.logger.info("Attempting to connect to database")
+        self.ui.process_start("Connecting to database")
 
         try:
             db_url = f"postgresql://{self.user}:{self.password}@{self.host}:{self.port}/{self.db_name}"
@@ -54,13 +56,18 @@ class Database:
             self.session = self.Session()
 
             self.logger.info("Successfully connected to database")
+            self.ui.success(
+                message="Database connection establised successfully", title="Connected"
+            )
 
             return True
 
         except (SQLAlchemyError, Exception) as e:
             self.logger.error(f"Failed to connect to database: {e}")
-            print("Unable to connect to the database:")
-            print(e)
+            self.ui.error(
+                message=f"Unable to connect to the database: {str(e)}",
+                title="Connection Failed",
+            )
             return False
 
     def disconnect(self):
@@ -76,7 +83,7 @@ class Database:
             self.logger.debug("Database engine disposed")
 
         self.logger.info("Database connection closed")
-        print("\nDatabase connection closed.")
+        self.ui.info("Database connection closed safely")
 
     """
     Adding the enter and the exit methods makes the class a context manager.
@@ -135,39 +142,49 @@ class Database:
         except (SQLAlchemyError, Exception) as error:
             self.logger.error(f"Failed to insert transaction: {error}")
             self.session.rollback()
-            print("Unable to insert data into the table:")
-            print(error)
+            self.ui.error(
+                message=f"Unable to insert transaction: {str(error)}",
+                title="Database Error",
+            )
             return None
 
     def add_transaction(self):
+        self.ui.separator("Add New Transaction")
+
         # Date validation with retry
         while True:
-            transaction_date_str = input("Enter transaction date DD-MM-YYYY: ")
+            transaction_date_str = self.ui.input_prompt(
+                "Enter transaction date (DD-MM-YYYY)"
+            )
             try:
                 datetime.strptime(transaction_date_str, "%d-%m-%Y")
                 break  # Valid date, exit loop
             except ValueError:
-                print(
-                    "❌ Invalid date format. Please use DD-MM-YYYY format (e.g., 25-12-2024)"
+                self.ui.validation_error(
+                    "Invalid date format. Please use DD-MM-YYYY format (e.g., 25-12-2024)"
                 )
 
-        transaction_details = input("Enter transaction details: ")
+        transaction_details = self.ui.input_prompt("Enter transaction details")
 
         # Amount validation with retry
         while True:
-            amount_str = input("Enter amount: ")
+            amount_str = self.ui.input_prompt("Enter amount")
             try:
                 amount = Decimal(amount_str)
                 if amount <= 0:
-                    print(
-                        "❌ Amount cannot be negative. Please enter a positive value."
+                    self.ui.validation_error(
+                        "Amount cannot be negative. Please enter a positive value"
                     )
                     continue
                 break  # Valid amount, exit loop
             except (ValueError, InvalidOperation):
-                print("❌ Invalid amount format. Please enter a valid number.")
+                self.ui.validation_error(
+                    "Invalid amount format. Please enter a valid number"
+                )
 
-        remarks = input("Enter remarks (Optional): ")
+        remarks = self.ui.input_prompt("Enter remarks (Optional)")
+
+        self.ui.process_start("Adding transaction to database")
 
         obj = self._insert_into_transaction_table(
             transaction_date_str=transaction_date_str,
@@ -180,18 +197,18 @@ class Database:
             self.logger.info(
                 f"Transaction added successfully with details: {transaction_details}"
             )
-            print("✅ Transaction added successfuly")
-
+            self.ui.success(
+                f"Transaction added successfully! ID: {obj}", "Transaction Added"
+            )
         else:
             self.logger.warning("Failed to add transaction - database operation failed")
-            print("❌ Failed to insert transaction. Please check your input.")
+            # Error already shown by _insert_into_transaction_table
 
     def _get_all_transactions(self):
         """
         Retrieve all transactions from the database using pandas
         Returns: pandas DataFrame or None if error
         """
-
         try:
             self.logger.debug("Retrieving all transactions from database")
             query = """
@@ -206,8 +223,9 @@ class Database:
 
         except (SQLAlchemyError, Exception) as error:
             self.logger.error(f"Failed to retrieve transactions: {error}")
-            print(f"Unable to retrieve data from the transaction table: {error}")
-
+            self.ui.error(
+                f"Unable to retrieve transactions: {str(error)}", "Database Error"
+            )
             return None
 
     def _get_total_amount(self):
@@ -215,7 +233,6 @@ class Database:
         Calculate total amount of all transactions
         Returns: Decimal total or None if error
         """
-
         try:
             self.logger.debug("Calculating total amount of all transactions")
             total = self.session.query(func.sum(Transaction.amount)).scalar()
@@ -225,24 +242,40 @@ class Database:
 
         except (SQLAlchemyError, Exception) as error:
             self.logger.error(f"Failed to calculate total amount: {error}")
-            print(f"Failed to calculate total: {error}")
+            self.ui.error(
+                f"Failed to calculate total: {str(error)}", "Calculation Error"
+            )
             return None
 
     def display_transaction_and_total_expenditure(self):
         """
         Displays all the transactions and the total expenditure
         """
+        self.ui.process_start("Loading transactions")
+
         try:
             df = self._get_all_transactions()
 
             if df is None or df.empty:
-                print("No transactions found.")
+                self.ui.warning(
+                    "No transactions found in the database", "Empty Database"
+                )
                 return
 
             total = self._get_total_amount()
 
             if total is None:
                 total = Decimal("0.00")
+
+            # Show summary first
+            summary = {
+                "Total Transactions": len(df),
+                "Total Amount": f"₹{total:,.2f}",
+                "Latest Transaction": df.iloc[0]["date"].strftime("%d-%m-%Y")
+                if len(df) > 0
+                else "N/A",
+            }
+            self.ui.status_panel("Transaction Summary", summary)
 
             display_transactions_in_table(
                 df=df,
@@ -251,7 +284,11 @@ class Database:
             )
 
         except Exception as e:
-            print("Something went wrong, cannot display transaction and total: ", e)
+            self.logger.error(f"Error displaying transactions: {e}")
+            self.ui.error(
+                f"Something went wrong while displaying transactions: {str(e)}",
+                "Display Error",
+            )
 
     def _get_transaction_by_id(self, transaction_id):
         """
@@ -259,14 +296,14 @@ class Database:
         Args:
         transaction_id (int): The ID of the transaction
         Returns:
-            dict: Transaction data or None if not found
+            tuple: (Transaction object, DataFrame) or (None, None) if not found
         """
-
         try:
             transaction = self.session.get(Transaction, transaction_id)
 
             if not transaction:
                 return None, None
+
             df = pd.DataFrame(
                 [
                     {
@@ -282,20 +319,22 @@ class Database:
             return transaction, df
 
         except (SQLAlchemyError, Exception) as error:
-            print(f"❌ Error fetching transaction: {error}")
-
+            self.logger.error(f"Error fetching transaction {transaction_id}: {error}")
+            self.ui.error(f"Error fetching transaction: {str(error)}", "Database Error")
             return None, None
 
     def delete_transaction_menu(self):
         """
         Menu interface for deleting transactions
         """
+        self.ui.separator("Delete Transaction")
+
         try:
             # Show all transactions
             all_transactions = self._get_all_transactions()
 
             if all_transactions is None or all_transactions.empty:
-                print("❌ No transactions found.")
+                self.ui.warning("No transactions found to delete", "Empty Database")
                 return False
 
             ID_map = display_transactions_for_selection(
@@ -304,15 +343,16 @@ class Database:
 
             # Get user selection
             try:
-                serial_no = int(
-                    input("Enter serial number of the record you want to delete: ")
+                serial_no_str = self.ui.input_prompt(
+                    "Enter serial number of the record you want to delete"
                 )
+                serial_no = int(serial_no_str)
             except ValueError:
-                print("❌ Invalid input. Please enter a number.")
+                self.ui.validation_error("Invalid input. Please enter a number")
                 return False
 
             if serial_no not in ID_map:
-                print("❌ Invalid transaction selection.")
+                self.ui.validation_error("Invalid transaction selection")
                 return False
 
             transaction_id = ID_map[serial_no]
@@ -321,7 +361,8 @@ class Database:
             return self._delete_transaction_by_id(transaction_id)
 
         except Exception as error:
-            print(f"❌ Error in delete menu: {error}")
+            self.logger.error(f"Error in delete menu: {error}")
+            self.ui.error(f"Error in delete menu: {str(error)}", "Menu Error")
             return False
 
     def _delete_transaction_by_id(self, transaction_id):
@@ -329,6 +370,7 @@ class Database:
         Deletes a transaction by ID (pure business logic)
         """
         self.logger.info(f"Attempting to delete transaction with ID: {transaction_id}")
+
         try:
             transaction, df = self._get_transaction_by_id(transaction_id)
 
@@ -336,7 +378,7 @@ class Database:
                 self.logger.warning(
                     f"Transaction with ID {transaction_id} not found for deletion"
                 )
-                print("❌ Transaction not found.")
+                self.ui.warning("Transaction not found", "Not Found")
                 return False
 
             # Show transaction to be deleted
@@ -345,13 +387,15 @@ class Database:
                 table_title="🚮 Transaction to be deleted",
             )
 
-            confirm = input(
-                "⚠️  Are you sure you want to delete this transaction? (y/N): "
+            confirm = self.ui.confirmation_prompt(
+                "Are you sure you want to delete this transaction?"
             ).lower()
 
             if confirm not in ["y", "yes"]:
-                print("❌ Deletion cancelled.")
+                self.ui.info("Deletion cancelled by user", "Cancelled")
                 return False
+
+            self.ui.process_start("Deleting transaction")
 
             self.session.delete(transaction)
             self.session.commit()
@@ -359,19 +403,23 @@ class Database:
             self.logger.info(
                 f"Successfully deleted transaction with ID: {transaction_id}"
             )
-            print("✅ Transaction deleted successfully.")
+            self.ui.success(
+                f"Transaction {transaction_id} deleted successfully", "Deleted"
+            )
             return True
 
         except SQLAlchemyError as error:
             self.logger.error(
                 f"Database error deleting transaction {transaction_id}: {error}"
             )
-            print(f"❌ Database error deleting transaction: {error}")
+            self.ui.error(
+                f"Database error deleting transaction: {str(error)}", "Database Error"
+            )
             self.session.rollback()
             return False
         except Exception as error:
             self.logger.error(f"Error deleting transaction {transaction_id}: {error}")
-            print(f"❌ Error deleting transaction: {error}")
+            self.ui.error(f"Error deleting transaction: {str(error)}", "Delete Error")
             return False
 
     def _update_transaction_by_id(self, id):
@@ -385,7 +433,7 @@ class Database:
 
             if not transaction:
                 self.logger.warning(f"Transaction with ID {id} not found for update")
-                print("❌ Transaction not found.")
+                self.ui.warning("Transaction not found", "Not Found")
                 return False
 
             # Show transaction to be updated
@@ -394,72 +442,86 @@ class Database:
                 table_title="💳 Transaction to be updated",
             )
 
-            print("Enter the details below to update the transaction")
+            self.ui.info("Enter the new details below to update the transaction")
+
+            # Date validation with retry
             while True:
-                transaction_date_str = input("Enter transaction date DD-MM-YYYY: ")
+                transaction_date_str = self.ui.input_prompt(
+                    "Enter transaction date (DD-MM-YYYY)"
+                )
                 try:
                     datetime.strptime(transaction_date_str, "%d-%m-%Y")
                     break  # Valid date, exit loop
                 except ValueError:
-                    print(
-                        "❌ Invalid date format. Please use DD-MM-YYYY format (e.g., 25-12-2024)"
+                    self.ui.validation_error(
+                        "Invalid date format. Please use DD-MM-YYYY format (e.g., 25-12-2024)"
                     )
 
-            transaction_details = input("Enter transaction details: ")
+            transaction_details = self.ui.input_prompt("Enter transaction details")
 
             # Amount validation with retry
             while True:
-                amount_str = input("Enter amount: ")
+                amount_str = self.ui.input_prompt("Enter amount")
                 try:
                     amount = Decimal(amount_str)
                     if amount <= 0:
-                        print(
-                            "❌ Amount cannot be negative. Please enter a positive value."
+                        self.ui.validation_error(
+                            "Amount cannot be negative. Please enter a positive value"
                         )
                         continue
                     break  # Valid amount, exit loop
                 except (ValueError, InvalidOperation):
-                    print("❌ Invalid amount format. Please enter a valid number.")
+                    self.ui.validation_error(
+                        "Invalid amount format. Please enter a valid number"
+                    )
 
-            remarks = input("Enter remarks (Optional): ")
+            remarks = self.ui.input_prompt("Enter remarks (Optional)")
 
-            confirm = input(
-                "⚠️  Are you sure you want to update this transaction? (y/N): "
+            confirm = self.ui.confirmation_prompt(
+                "Are you sure you want to update this transaction?"
             ).lower()
 
             if confirm not in ["y", "yes"]:
-                print("❌ Update cancelled.")
+                self.ui.info("Update cancelled by user", "Cancelled")
                 return False
 
-            transaction.date = transaction_date_str
+            self.ui.process_start("Updating transaction")
+
+            transaction.date = datetime.strptime(
+                transaction_date_str, "%d-%m-%Y"
+            ).date()
             transaction.transaction_details = transaction_details
             transaction.amount = amount
             transaction.remarks = remarks
             self.session.commit()
 
             self.logger.info(f"Successfully updated transaction with ID: {id}")
+            self.ui.success(f"Transaction {id} updated successfully", "Updated")
             return True
 
         except SQLAlchemyError as error:
             self.logger.error(f"Database error updating transaction {id}: {error}")
-            print(f"❌ Database error updating transaction: {error}")
+            self.ui.error(
+                f"Database error updating transaction: {str(error)}", "Database Error"
+            )
             self.session.rollback()
             return False
         except Exception as error:
             self.logger.error(f"Error updating transaction {id}: {error}")
-            print(f"❌ Error updating transaction: {error}")
+            self.ui.error(f"Error updating transaction: {str(error)}", "Update Error")
             return False
 
     def update_transaction_menu(self):
         """
         Menu interface for updating transactions
         """
+        self.ui.separator("Update Transaction")
 
         try:
             all_transactions = self._get_all_transactions()
 
             if all_transactions is None or all_transactions.empty:
-                print("❌ No transactions found.")
+                self.ui.warning("No transactions found to update", "Empty Database")
                 return False
 
             ID_map = display_transactions_for_selection(
@@ -468,27 +530,25 @@ class Database:
 
             # Getting user selection
             try:
-                serial_no = int(
-                    input("Enter serial number of the record you want to update: ")
+                serial_no_str = self.ui.input_prompt(
+                    "Enter serial number of the record you want to update"
                 )
+                serial_no = int(serial_no_str)
             except ValueError:
-                print("❌ Invalid input. Please enter a number.")
+                self.ui.validation_error("Invalid input. Please enter a number")
                 return False
 
             if serial_no not in ID_map:
-                print("❌ Invalid transaction selection.")
+                self.ui.validation_error("Invalid transaction selection")
                 return False
 
             transaction_id = ID_map[serial_no]
 
             # Call the actual update method
             result = self._update_transaction_by_id(transaction_id)
-
-            if result:
-                print("✅ Transaction updated successfully.")
-            else:
-                print("❌ Transaction update failed.")
+            return result
 
         except Exception as error:
-            print(f"❌ Error in delete menu: {error}")
+            self.logger.error(f"Error in update menu: {error}")
+            self.ui.error(f"Error in update menu: {str(error)}", "Menu Error")
             return False
