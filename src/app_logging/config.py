@@ -1,6 +1,5 @@
 import logging
 import logging.handlers
-import os
 from pathlib import Path
 
 
@@ -19,7 +18,7 @@ def setup_logger(name: str = "credit_card_tracker", level: str = "INFO"):
     # Create logs directory if it doesn't exist
     project_root = Path(__file__).resolve().parent.parent.parent
     logs_dir = project_root / "logs"
-    os.makedirs(logs_dir, exist_ok=True)
+    logs_dir.mkdir(exist_ok=True)
 
     # Create logger
     logger = logging.getLogger(name)
@@ -59,5 +58,3 @@ def setup_logger(name: str = "credit_card_tracker", level: str = "INFO"):
     logger.addHandler(console_handler)
 
     return logger
-
-
