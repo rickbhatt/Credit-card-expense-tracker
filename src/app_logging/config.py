@@ -40,7 +40,7 @@ def setup_logger(name: str = "credit_card_tracker", level: str = "INFO"):
     )
 
     # File handler with rotation
-    log_file = os.path.join(logs_dir, f"{name}.log")
+    log_file = logs_dir / f"{name}.log"
     file_handler = logging.handlers.RotatingFileHandler(
         log_file,
         maxBytes=10 * 1024 * 1024,  # 10MB
@@ -61,5 +61,3 @@ def setup_logger(name: str = "credit_card_tracker", level: str = "INFO"):
     return logger
 
 
-# Create default logger instance
-default_logger = setup_logger()
