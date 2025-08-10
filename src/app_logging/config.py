@@ -68,22 +68,23 @@ class UserInterfaceLogger:
 
     def __init__(self):
         self.console = console
+
+        self.space = "\u2002"
+
         self.symbols = {
-            "success": "[✓]",
-            "error": "[✗]",
-            "warning": "[!]",
-            "info": "(i)",  # Avoid [i] which Rich treats as italic
-            "process": "[~]",
+            "success": f"✅{self.space}",
+            "error": f"❌{self.space}",
+            "warning": f"⚠️{self.space}",
+            "info": f"ℹ️{self.space}",
+            "process": f"🔄{self.space}",
         }
 
     def success(self, message: str, title: Optional[str] = None):
         """Display success message with green styling."""
 
-        symbol = self.symbols["success"]
-
         if title:
             panel = Panel(
-                f"[green]{symbol} {message}[/green]",
+                f"[green]{self.symbols['success']}{message}[/green]",
                 title=f"[bold green]{title}[/bold green]",
                 border_style="green",
             )
@@ -91,52 +92,46 @@ class UserInterfaceLogger:
             self.console.print(panel)
 
         else:
-            rprint(f"[green]{symbol} {message}[/green]")
+            rprint(f"[green]{self.symbols['success']}{message}[/green]")
 
     def error(self, message: str, title: Optional[str] = None):
         """Display error message with red styling."""
 
-        symbol = self.symbols["error"]
-
         if title:
             panel = Panel(
-                f"[red]{symbol} {message}[/red]",
+                f"[red]{self.symbols['error']}{message}[/red]",
                 title=f"[bold red]{title}[/bold red]",
                 border_style="red",
             )
             self.console.print(panel)
         else:
-            rprint(f"[red]{symbol} {message}[/red]")
+            rprint(f"[red]{self.symbols['error']}{message}[/red]")
 
     def warning(self, message: str, title: Optional[str] = None):
         """Display warning message with yellow styling."""
 
-        symbol = self.symbols["warning"]
-
         if title:
             panel = Panel(
-                f"[yellow]{symbol} {message}[/yellow]",
+                f"[yellow]{self.symbols['warning']}{message}[/yellow]",
                 title=f"[bold yellow]{title}[/bold yellow]",
                 border_style="yellow",
             )
             self.console.print(panel)
         else:
-            rprint(f"[yellow]{symbol} {message}[/yellow]")
+            rprint(f"[yellow]{self.symbols['warning']}{message}[/yellow]")
 
     def info(self, message: str, title: Optional[str] = None):
         """Display info message with blue styling."""
 
-        symbol = self.symbols["info"]
-
         if title:
             panel = Panel(
-                f"[blue]{symbol} {message}[/blue]",
+                f"[blue]{self.symbols['info']}{message}[/blue]",
                 title=f"[bold blue]{title}[/bold blue]",
                 border_style="blue",
             )
             self.console.print(panel)
         else:
-            rprint(f"[blue]{symbol} {message}[/blue]")
+            rprint(f"[blue]{self.symbols['info']}{message}[/blue]")
 
     def process_start(self, message: str):
         """Indicate start of a process."""
@@ -148,9 +143,7 @@ class UserInterfaceLogger:
     def process_complete(self, message: str):
         """Indicate completion of a process."""
 
-        symbol = self.symbols["success"]
-
-        rprint(f"[green]{symbol} {message}[/green]")
+        rprint(f"[green]{self.symbols['success']}{message}[/green]")
 
     def input_prompt(self, prompt: str) -> str:
         """Styled input prompt."""
@@ -158,14 +151,14 @@ class UserInterfaceLogger:
 
     def confirmation_prompt(self, message: str) -> str:
         """Styled confirmation prompt."""
-        return self.console.input(f"[bold yellow]⚠️ {message} (y/N):[/bold yellow] ")
+        return self.console.input(
+            f"[bold yellow]{self.symbols['warning']}{message} (y/N):[/bold yellow] "
+        )
 
     def validation_error(self, message: str):
         """Display validation error."""
 
-        symbol = self.symbols["error"]
-
-        rprint(f"[red]{symbol} {message}[/red]")
+        rprint(f"[red]{self.symbols['success']}{message}[/red]")
 
     def separator(self, title: Optional[str] = None):
         """Print a separator line."""
