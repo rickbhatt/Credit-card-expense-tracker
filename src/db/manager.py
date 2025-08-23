@@ -1,12 +1,13 @@
 import os
+from typing import Optional, Tuple
 from dotenv import load_dotenv
 from datetime import datetime
 from decimal import Decimal, InvalidOperation
 import pandas as pd
-from sqlalchemy import create_engine, func
-from sqlalchemy.orm import sessionmaker
+from sqlalchemy import create_engine, func, Engine
+from sqlalchemy.orm import sessionmaker, Session
 from sqlalchemy.exc import SQLAlchemyError
-from .models import Transaction, Base
+from .models import Transaction
 from .utils import (
     display_transactions_in_table,
     display_transactions_for_selection,
@@ -27,10 +28,9 @@ class Database:
         self.host = os.getenv("DB_HOST")
         self.port = os.getenv("DB_PORT")
         self.password = os.getenv("DB_PASSWORD")
-        self.is_create_table = os.getenv("CREATE_TABLES", "false").lower() == "true"
-        self.engine = None
-        self.Session = None
-        self.session = None
+        self.engine: Optional[Engine] = None
+        self.Session: Optional[sessionmaker[Session]] = None
+        self.session: Optional[Session] = None
         self.logger.info("Database instance initialized")
 
     def connect(self):
@@ -47,11 +47,6 @@ class Database:
             )
 
             self.engine = create_engine(db_url, echo=False)
-
-            if self.is_create_table:
-                self.logger.info("Creating database tables if they don't exist")
-                Base.metadata.create_all(self.engine)
-
             self.Session = sessionmaker(bind=self.engine)
             self.session = self.Session()
 
@@ -72,7 +67,7 @@ class Database:
 
     def disconnect(self):
         self.logger.info("Disconnecting from database")
-        if self.engine:
+        if self.session:
             self.session.close()
             self.session = None
             self.logger.debug("Database session closed")
@@ -100,7 +95,7 @@ class Database:
             self.logger.error("Context manager failed to connect to database")
             raise ConnectionError("Failed to connect to the database")
 
-    def __exit__(self, exc_type, exc_val, exc_tb):
+    def __exit__(self, exc_type, exc_val, _exc_tb):
         """Called automatically when exiting 'with' block"""
         if exc_type:
             self.logger.error(
@@ -131,8 +126,9 @@ class Database:
                 remarks=remarks,
             )
 
-            self.session.add(new_transaction)
-            self.session.commit()
+            if self.session:
+                self.session.add(new_transaction)
+                self.session.commit()
 
             self.logger.info(
                 f"Successfully inserted transaction with ID: {new_transaction.id}"
@@ -141,7 +137,8 @@ class Database:
 
         except (SQLAlchemyError, Exception) as error:
             self.logger.error(f"Failed to insert transaction: {error}")
-            self.session.rollback()
+            if self.session:
+                self.session.rollback()
             self.ui.error(
                 message=f"Unable to insert transaction: {str(error)}",
                 title="Database Error",
@@ -186,19 +183,19 @@ class Database:
 
         self.ui.process_start("Adding transaction to database")
 
-        obj = self._insert_into_transaction_table(
+        transaction_id = self._insert_into_transaction_table(
             transaction_date_str=transaction_date_str,
             transaction_details=transaction_details,
             amount_str=amount_str,
             remarks=remarks,
         )
 
-        if obj:
+        if transaction_id is not None:
             self.logger.info(
                 f"Transaction added successfully with details: {transaction_details}"
             )
             self.ui.success(
-                f"Transaction added successfully! ID: {obj}", "Transaction Added"
+                f"Transaction added successfully! ID: {transaction_id}", "Transaction Added"
             )
         else:
             self.logger.warning("Failed to add transaction - database operation failed")
@@ -210,6 +207,10 @@ class Database:
         Returns: pandas DataFrame or None if error
         """
         try:
+            if not self.engine:
+                self.logger.error("Database engine is not initialized")
+                return None
+                
             self.logger.debug("Retrieving all transactions from database")
             query = """
                 SELECT id, date, transaction_details, amount, remarks 
@@ -235,6 +236,8 @@ class Database:
         """
         try:
             self.logger.debug("Calculating total amount of all transactions")
+            if not self.session:
+                return None
             total = self.session.query(func.sum(Transaction.amount)).scalar()
             result = total if total is not None else Decimal("0.00")
             self.logger.info(f"Total amount calculated: {result}")
@@ -279,7 +282,7 @@ class Database:
 
             display_transactions_in_table(
                 df=df,
-                total=total,
+                total=float(total),
                 table_title="💳 Credit Card Transactions",
             )
 
@@ -290,7 +293,7 @@ class Database:
                 "Display Error",
             )
 
-    def _get_transaction_by_id(self, transaction_id):
+    def _get_transaction_by_id(self, transaction_id) -> Tuple[Optional[Transaction], Optional[pd.DataFrame]]:
         """
         Gets a transaction by id
         Args:
@@ -299,6 +302,8 @@ class Database:
             tuple: (Transaction object, DataFrame) or (None, None) if not found
         """
         try:
+            if not self.session:
+                return None, None
             transaction = self.session.get(Transaction, transaction_id)
 
             if not transaction:
@@ -397,8 +402,9 @@ class Database:
 
             self.ui.process_start("Deleting transaction")
 
-            self.session.delete(transaction)
-            self.session.commit()
+            if self.session:
+                self.session.delete(transaction)
+                self.session.commit()
 
             self.logger.info(
                 f"Successfully deleted transaction with ID: {transaction_id}"
@@ -415,7 +421,8 @@ class Database:
             self.ui.error(
                 f"Database error deleting transaction: {str(error)}", "Database Error"
             )
-            self.session.rollback()
+            if self.session:
+                self.session.rollback()
             return False
         except Exception as error:
             self.logger.error(f"Error deleting transaction {transaction_id}: {error}")
@@ -487,13 +494,14 @@ class Database:
 
             self.ui.process_start("Updating transaction")
 
-            transaction.date = datetime.strptime(
+            setattr(transaction, 'date', datetime.strptime(
                 transaction_date_str, "%d-%m-%Y"
-            ).date()
-            transaction.transaction_details = transaction_details
-            transaction.amount = amount
-            transaction.remarks = remarks
-            self.session.commit()
+            ).date())
+            setattr(transaction, 'transaction_details', transaction_details)
+            setattr(transaction, 'amount', amount)
+            setattr(transaction, 'remarks', remarks)
+            if self.session:
+                self.session.commit()
 
             self.logger.info(f"Successfully updated transaction with ID: {id}")
             self.ui.success(f"Transaction {id} updated successfully", "Updated")
@@ -504,7 +512,8 @@ class Database:
             self.ui.error(
                 f"Database error updating transaction: {str(error)}", "Database Error"
             )
-            self.session.rollback()
+            if self.session:
+                self.session.rollback()
             return False
         except Exception as error:
             self.logger.error(f"Error updating transaction {id}: {error}")

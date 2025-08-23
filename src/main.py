@@ -1,21 +1,23 @@
 from db.manager import Database
 from app_logging.config import setup_logger, get_ui
+from InquirerPy import inquirer
+from InquirerPy.base.control import Choice
 
 
-def display_options():
+def display_options() -> str:
     print("*" * 50)
 
-    print("1. Press 1 to insert transaction details")
-    print("2. Press 2 to see all transactions and total expenditure")
-    print("3. Press 3 to delete a transaction")
-    print("4. Press 4 to update a transaction")
-    print("🚪 Press Ctrl+C to exit the program")
+    action = inquirer.select(
+        message="Select an option",
+        choices=[
+            Choice(value="insert", name="Add new transaction"),
+            Choice(value="view", name="View all transactions"),
+            Choice(value="update", name="Update a transaction"),
+            Choice(value="delete", name="Delete a transaction"),
+        ],
+    ).execute()
 
-    option_input = input("Enter your option: ")
-
-    print("*" * 50)
-
-    return option_input
+    return action
 
 
 if __name__ == "__main__":
@@ -31,22 +33,22 @@ if __name__ == "__main__":
                 logger.debug(f"User selected option: {option_input}")
 
                 match option_input:
-                    case "1":
+                    case "insert":
                         logger.info("User selected: Add transaction")
                         obj = db.add_transaction()
                         continue
 
-                    case "2":
+                    case "view":
                         logger.info("User selected: Display transactions")
                         db.display_transaction_and_total_expenditure()
                         continue
 
-                    case "3":
+                    case "delete":
                         logger.info("User selected: Delete transaction")
                         db.delete_transaction_menu()
                         continue
 
-                    case "4":
+                    case "update":
                         logger.info("User selected: Update transaction")
                         db.update_transaction_menu()
                         continue
